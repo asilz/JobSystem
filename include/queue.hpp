@@ -18,6 +18,7 @@ private:
 
 public:
     ThreadSafeQueue();
+    ~ThreadSafeQueue();
     void push(const T &obj);
     T pop();
 };
@@ -55,4 +56,19 @@ T ThreadSafeQueue<T, capacity>::pop()
     mut.unlock();
     empty.release();
     return obj;
+}
+
+template <class T, size_t capacity>
+ThreadSafeQueue<T, capacity>::~ThreadSafeQueue()
+{
+    mut.lock();
+    while (first != last)
+    {
+        if (++first == reinterpret_cast<T *>(&data[capacity * sizeof(T)]))
+        {
+            first = reinterpret_cast<T *>(data);
+        }
+        first->~T();
+    }
+    mut.unlock();
 }
