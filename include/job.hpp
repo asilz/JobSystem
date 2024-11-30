@@ -4,12 +4,22 @@
 #include <thread>
 #include <queue.hpp>
 #include <atomic>
+#include <condition_variable>
 
 class Job
 {
 public:
     std::function<void(void *)> work;
     void *arg;
+    char *test;
+    Job(std::function<void(void *)> func_, void *arg_) : work(func_), arg(arg_) { test = new char; };
+    Job(const Job &job)
+    {
+        this->arg = job.arg;
+        this->test = new char;
+        this->work = job.work;
+    }
+    ~Job() { delete test; };
 };
 
 template <size_t capacity, size_t threadCount>
@@ -18,8 +28,6 @@ class JobQueue
 private:
     ThreadSafeQueue<Job, capacity> queue;
     std::thread threads[threadCount];
-    std::atomic_bool terminate;
-
     void runThread();
 
 public:
@@ -35,7 +43,7 @@ void JobQueue<capacity, threadCount>::push(const Job &job)
 }
 
 template <size_t capacity, size_t threadCount>
-JobQueue<capacity, threadCount>::JobQueue() : queue(ThreadSafeQueue<Job, capacity>()), terminate(false)
+JobQueue<capacity, threadCount>::JobQueue() : queue(ThreadSafeQueue<Job, capacity>())
 {
     for (size_t i = 0; i < threadCount; ++i)
     {
@@ -46,17 +54,27 @@ JobQueue<capacity, threadCount>::JobQueue() : queue(ThreadSafeQueue<Job, capacit
 template <size_t capacity, size_t threadCount>
 void JobQueue<capacity, threadCount>::runThread()
 {
-    while (!terminate)
+    while (1)
     {
         Job job = queue.pop();
-        job.work(job.arg);
+        if (job.work)
+        {
+            job.work(job.arg);
+        }
+        else
+        {
+            return;
+        }
     }
 }
 
 template <size_t capacity, size_t threadCount>
 JobQueue<capacity, threadCount>::~JobQueue()
 {
-    terminate = true;
+    for (size_t i = 0; i < threadCount; ++i)
+    {
+        push({std::function<void(void *)>(), nullptr});
+    }
     for (size_t i = 0; i < threadCount; ++i)
     {
         if (threads[i].joinable())

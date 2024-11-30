@@ -11,13 +11,12 @@ int main(void)
 {
     {
         JobQueue queue = JobQueue<32, 4>();
-        Job job{printer, nullptr};
         size_t loop = 1;
 
-        while (loop < 50)
+        while (loop < 32)
         {
             ++loop;
-            queue.push(job);
+            queue.push({printer, nullptr});
         }
     }
 

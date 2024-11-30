@@ -3,7 +3,6 @@
 #include <queue>
 #include <mutex>
 #include <semaphore>
-#include <condition_variable>
 
 template <class T, size_t capacity>
 class ThreadSafeQueue
@@ -14,7 +13,7 @@ private:
     T *first;
     T *last;
     std::mutex mut;
-    std::byte data[capacity * sizeof(T)];
+    alignas(T) std::byte data[capacity * sizeof(T)];
 
 public:
     ThreadSafeQueue();
