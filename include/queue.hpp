@@ -1,6 +1,5 @@
 #pragma once
 
-#include <queue>
 #include <mutex>
 #include <semaphore>
 
@@ -10,8 +9,8 @@ class ThreadSafeQueue
 private:
     std::counting_semaphore<capacity> empty;
     std::counting_semaphore<capacity> full;
-    T *first;
-    T *last;
+    size_t firstIndex;
+    size_t lastIndex;
     std::mutex mut;
     alignas(T) std::byte data[capacity * sizeof(T)];
 
@@ -23,8 +22,9 @@ public:
 };
 
 template <class T, size_t capacity>
-ThreadSafeQueue<T, capacity>::ThreadSafeQueue() : empty(std::counting_semaphore<capacity>(capacity)), full(std::counting_semaphore<capacity>(0)), first(reinterpret_cast<T *>(&data)), last(reinterpret_cast<T *>(&data)), mut(std::mutex())
+ThreadSafeQueue<T, capacity>::ThreadSafeQueue() : empty(std::counting_semaphore<capacity>(capacity)), full(std::counting_semaphore<capacity>(0)), firstIndex(0), lastIndex(0), mut(std::mutex())
 {
+    static_assert((capacity & (capacity - 1)) == 0, "Capacity must be a power of 2");
 }
 
 template <class T, size_t capacity>
@@ -32,11 +32,10 @@ void ThreadSafeQueue<T, capacity>::push(const T &obj)
 {
     empty.acquire();
     mut.lock();
-    if (++last == reinterpret_cast<T *>(&data[capacity * sizeof(T)]))
-    {
-        last = reinterpret_cast<T *>(data);
-    }
-    new (last) T(std::move(obj));
+
+    lastIndex = (lastIndex + 1) % capacity;
+    new (&data[lastIndex * sizeof(T)]) T(std::move(obj));
+
     mut.unlock();
     full.release();
 }
@@ -46,12 +45,11 @@ T ThreadSafeQueue<T, capacity>::pop()
 {
     full.acquire();
     mut.lock();
-    if (++first == reinterpret_cast<T *>(&data[capacity * sizeof(T)]))
-    {
-        first = reinterpret_cast<T *>(data);
-    }
-    T obj = std::move(*first);
-    first->~T();
+
+    firstIndex = (firstIndex + 1) % capacity;
+    T obj = std::move(reinterpret_cast<T *>(data)[firstIndex]);
+    reinterpret_cast<T *>(data)[firstIndex].~T();
+
     mut.unlock();
     empty.release();
     return obj;
@@ -61,13 +59,10 @@ template <class T, size_t capacity>
 ThreadSafeQueue<T, capacity>::~ThreadSafeQueue()
 {
     mut.lock();
-    while (first != last)
+    while (firstIndex != lastIndex)
     {
-        if (++first == reinterpret_cast<T *>(&data[capacity * sizeof(T)]))
-        {
-            first = reinterpret_cast<T *>(data);
-        }
-        first->~T();
+        firstIndex = (firstIndex + 1) % capacity;
+        reinterpret_cast<T *>(data)[firstIndex].~T();
     }
     mut.unlock();
 }
